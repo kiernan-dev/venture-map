@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, Copy, Download, ChevronDown, Send, FileText, Loader2 } from 'lucide-react';
+import { Bot, Copy, Download, ChevronDown, Send, FileText, Loader2, Paperclip, Upload, X } from 'lucide-react';
 
 interface ChatMessage {
   id: number;
@@ -26,6 +26,9 @@ interface SplitPaneViewProps {
   showExportMenu: boolean;
   chatInput: string;
   showChatbot: boolean;
+  pendingAttachments: any[];
+  isDragging: boolean;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   
   // Event handlers
   onChatInputChange: (value: string) => void;
@@ -34,6 +37,11 @@ interface SplitPaneViewProps {
   onCopyToClipboard: () => void;
   onExportMenuToggle: () => void;
   onExport: (format: string) => void;
+  onFileUpload: (files: FileList) => void;
+  onRemovePendingAttachment: (id: number | string) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
   
   // Data
   exportOptions: ExportOption[];
@@ -50,12 +58,20 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
   showExportMenu,
   chatInput,
   showChatbot,
+  pendingAttachments,
+  isDragging: isFileDragging,
+  fileInputRef,
   onChatInputChange,
   onSendMessage,
   onChatKeyPress,
   onCopyToClipboard,
   onExportMenuToggle,
   onExport,
+  onFileUpload,
+  onRemovePendingAttachment,
+  onDragOver,
+  onDragLeave,
+  onDrop,
   exportOptions,
   renderMarkdown,
   renderChatMessage
@@ -232,9 +248,23 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
           {/* CHAT SECTION (BOTTOM) - Only show when chat is visible */}
           {showChatbot && (
             <div 
-              className="flex flex-col"
+              className={`flex flex-col relative ${isFileDragging ? 'border-4 border-pink-500 border-dashed' : ''}`}
               style={{ height: `${100 - splitPaneHeight}%` }}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
             >
+            {/* Drag Overlay for Chat Section */}
+            {isFileDragging && (
+              <div className="absolute inset-0 bg-pink-500/20 backdrop-blur-sm flex items-center justify-center z-10">
+                <div className="text-center text-white">
+                  <Upload className="w-16 h-16 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">Drop files here</h3>
+                  <p className="text-sm opacity-90">Upload documents to AI Assistant</p>
+                  <p className="text-xs opacity-75 mt-1">Supports .txt, .md, .pdf, .csv files</p>
+                </div>
+              </div>
+            )}
             {/* Chat Header */}
             <div className={`border-b border-white/50 p-4 flex items-center justify-between ${cardClasses} backdrop-blur-sm shrink-0`}>
               <h3 className="font-semibold">✨ AI Assistant</h3>
@@ -260,7 +290,23 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
                       >
                         <div className="text-sm leading-relaxed">
                           {message.type === 'user' ? (
-                            message.message
+                            <div>
+                              {/* Show attachments for user messages */}
+                              {(message as any).attachments && (message as any).attachments.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-1">
+                                  {(message as any).attachments.map((attachment: any) => (
+                                    <div
+                                      key={attachment.id}
+                                      className="flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs text-white/90"
+                                    >
+                                      <FileText className="w-3 h-3" />
+                                      <span className="truncate max-w-[80px]">{attachment.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {message.message}
+                            </div>
                           ) : (
                             <div 
                               className={`prose prose-sm max-w-none ${
@@ -327,6 +373,31 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
               <div ref={messagesEndRef} />
             </div>
             
+            {/* Pending Attachments */}
+            {pendingAttachments.length > 0 && (
+              <div className={`p-4 border-t ${isDarkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50/50 border-gray-200'}`}>
+                <div className="flex flex-wrap gap-2">
+                  {pendingAttachments.map((attachment) => (
+                    <div
+                      key={attachment.id}
+                      className={`relative group flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                        isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-white border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      <FileText className="w-3 h-3" />
+                      <span className="truncate max-w-[120px]">{attachment.name}</span>
+                      <button
+                        onClick={() => onRemovePendingAttachment(attachment.id)}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2 h-2" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {/* Chat Input - ChatGPT style */}
             <div className={`p-4 border-t shrink-0 ${isDarkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50/50 border-gray-200'}`}>
               <div className="flex gap-3 items-end">
@@ -336,7 +407,7 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
                     onChange={(e) => onChatInputChange(e.target.value)}
                     onKeyDown={onChatKeyPress}
                     placeholder="Ask me anything about your business plan..."
-                    className={`w-full px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 text-sm transition-all resize-none ${
+                    className={`w-full pl-4 pr-12 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 text-sm transition-all resize-none ${
                       isDarkMode 
                         ? 'bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-400'
                         : 'bg-white border border-gray-300 text-gray-900 placeholder-gray-500'
@@ -354,6 +425,17 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
                       target.style.height = Math.min(target.scrollHeight, 120) + 'px';
                     }}
                   />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
+                      isDarkMode 
+                        ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-600' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    }`}
+                    title="Upload document"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
                 </div>
                 <button
                   onClick={onSendMessage}
@@ -364,6 +446,16 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
                   <Send className="w-4 h-4" />
                 </button>
               </div>
+              
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".txt,.md,.pdf,.csv,text/plain,text/markdown,application/pdf,text/csv"
+                onChange={(e) => e.target.files && onFileUpload(e.target.files)}
+                className="hidden"
+              />
             </div>
           </div>
           )}

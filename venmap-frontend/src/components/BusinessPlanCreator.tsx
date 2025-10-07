@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Loader2, Save, FolderOpen, Moon, Sun, Settings, Trash2, Edit3, ChevronDown, ChevronRight, CheckCircle, X, MessageCircle, Send, Bot, Key } from 'lucide-react';
+import { FileText, Loader2, Save, FolderOpen, Moon, Sun, Settings, Trash2, Edit3, ChevronDown, ChevronRight, CheckCircle, X, MessageCircle, Send, Bot, Key, Paperclip, Upload } from 'lucide-react';
 import { AIClient } from '../utils/apiClient';
 import { SplitPaneView } from './SplitPaneView';
 import { StorageService, type BusinessPlan } from '../utils/database';
@@ -256,6 +256,12 @@ const BusinessPlanCreator = () => {
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   
+  // Document upload state
+  // const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]); // Persistent documents - now using per-message attachments
+  const [pendingAttachments, setPendingAttachments] = useState<any[]>([]); // Attachments for current message
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   // AI client instance
   const aiClient = AIClient.getInstance();
   
@@ -359,12 +365,14 @@ const BusinessPlanCreator = () => {
       id: Date.now(),
       type: 'user',
       message: chatInput.trim(),
-      timestamp: new Date()
+      timestamp: new Date(),
+      attachments: [...pendingAttachments] // Include current attachments
     };
     
     try {
       setChatMessages(prev => [...prev, userMessage]);
       setChatInput('');
+      setPendingAttachments([]); // Clear pending attachments after sending
       setIsChatLoading(true);
       
       const aiClient = AIClient.getInstance();
@@ -381,7 +389,15 @@ const BusinessPlanCreator = () => {
       }
       
       if (generatedPlan && generatedPlan.trim()) {
-        context += `Generated Business Plan:\n${generatedPlan}`;
+        context += `Generated Business Plan:\n${generatedPlan}\n\n`;
+      }
+      
+      // Add message attachments to context
+      if (userMessage.attachments && userMessage.attachments.length > 0) {
+        context += `Attached Documents:\n`;
+        userMessage.attachments.forEach((doc, index) => {
+          context += `${index + 1}. ${doc.name}:\n${doc.content.substring(0, 2000)}${doc.content.length > 2000 ? '...' : ''}\n\n`;
+        });
       }
       
       const prompt = `You are a helpful business consultant with access to the user's business information. The user asked: "${userMessage.message}"
@@ -425,6 +441,97 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendChatMessage();
+    }
+  };
+
+  // File upload functions
+  const handleFileUpload = async (files: FileList) => {
+    const validFiles = Array.from(files).filter(file => {
+      const validTypes = ['text/plain', 'text/markdown', 'application/pdf', 'text/csv'];
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      
+      if (!validTypes.includes(file.type) && !file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
+        showToast(`Unsupported file type: ${file.name}`, 'error');
+        return false;
+      }
+      
+      if (file.size > maxSize) {
+        showToast(`File too large: ${file.name}`, 'error');
+        return false;
+      }
+      
+      return true;
+    });
+
+    for (const file of validFiles) {
+      try {
+        const content = await readFileContent(file);
+        const attachment = {
+          id: Date.now() + Math.random(),
+          name: file.name,
+          type: file.type || 'text/plain',
+          content,
+          size: file.size,
+          uploadedAt: new Date().toISOString()
+        };
+
+        setPendingAttachments(prev => [...prev, attachment]);
+        showToast(`Attached: ${file.name}`, 'success');
+      } catch (error) {
+        console.error('File upload error:', error);
+        showToast(`Failed to attach: ${file.name}`, 'error');
+      }
+    }
+  };
+
+  const readFileContent = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  };
+
+  // const removeDocument = async (docId: number | string) => {
+  //   try {
+  //     if (typeof docId === 'number') {
+  //       await StorageService.deleteDocument(docId);
+  //     }
+  //     setUploadedDocuments(prev => prev.filter(doc => doc.id !== docId));
+  //     showToast('Document removed', 'success');
+  //   } catch (error) {
+  //     console.error('Error removing document:', error);
+  //     showToast('Failed to remove document', 'error');
+  //   }
+  // };
+
+  const removePendingAttachment = (attachmentId: number | string) => {
+    setPendingAttachments(prev => prev.filter(attachment => attachment.id !== attachmentId));
+    showToast('Attachment removed', 'success');
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    // Only set dragging false if we're leaving the main container
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(files);
     }
   };
 
@@ -483,6 +590,10 @@ Please provide helpful, specific advice. Keep your response concise but actionab
         // Load API keys
         const apiKeys = await StorageService.getSetting('userApiKeys', { claude: '', openai: '', provider: '' });
         setUserApiKeys(apiKeys);
+        
+        // Load uploaded documents - now using per-message attachments
+        // const documents = await StorageService.getDocuments();
+        // setUploadedDocuments(documents);
         
         // Mark data as loaded to allow saving
         setIsDataLoaded(true);
@@ -1346,8 +1457,8 @@ Thank you for your consideration!`;
     : 'bg-white/80 border-white/50';
 
   const inputClasses = isDarkMode
-    ? 'bg-gray-700/90 border-gray-600/50 text-white placeholder-gray-400 focus:ring-pink-500/50 focus:border-pink-500/50'
-    : 'bg-white/90 border-gray-300/50 text-gray-900 placeholder-gray-500 focus:ring-pink-500/50 focus:border-pink-500/50';
+    ? 'bg-gray-700/90 border-gray-600/50 text-white placeholder-gray-400 focus:ring-pink-500/50 focus:border-pink-500/50 [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_rgb(55,65,81)] [&:-webkit-autofill]:[-webkit-text-fill-color:white!important]'
+    : 'bg-white/90 border-gray-300/50 text-gray-900 placeholder-gray-500 focus:ring-pink-500/50 focus:border-pink-500/50 [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_rgb(255,255,255)] [&:-webkit-autofill]:[-webkit-text-fill-color:rgb(17,24,39)!important]';
 
   return (
     <>
@@ -1391,7 +1502,7 @@ Thank you for your consideration!`;
           <div 
             className={`absolute inset-x-0 bottom-0 h-full flex flex-col ${isDarkMode ? 'bg-gray-900' : 'bg-white'} transition-transform duration-300 ease-out ${
               isClosingChatbot ? 'translate-y-full' : 'translate-y-0'
-            }`}
+            } ${isDragging ? 'border-4 border-pink-500 border-dashed' : ''}`}
             style={{
               transform: isClosingChatbot ? 'translateY(100%)' : 'translateY(0)',
               transitionTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
@@ -1399,7 +1510,21 @@ Thank you for your consideration!`;
               // Start from bottom initially
               ...(showChatbot && !isClosingChatbot && { transform: 'translateY(0)' })
             }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
+            {/* Drag Overlay */}
+            {isDragging && (
+              <div className="absolute inset-0 bg-pink-500/20 backdrop-blur-sm flex items-center justify-center z-10">
+                <div className="text-center text-white">
+                  <Upload className="w-16 h-16 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">Drop files here</h3>
+                  <p className="text-sm opacity-90">Supports .txt, .md, .pdf, .csv files</p>
+                </div>
+              </div>
+            )}
+            
             {/* Mobile Header */}
             <div className="flex items-center justify-between p-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg">
               <button
@@ -1432,7 +1557,23 @@ Thank you for your consideration!`;
                       >
                         <div className="text-sm leading-relaxed">
                           {message.type === 'user' ? (
-                            message.message
+                            <div>
+                              {/* Show attachments for user messages */}
+                              {(message as any).attachments && (message as any).attachments.length > 0 && (
+                                <div className="mb-2 flex flex-wrap gap-1">
+                                  {(message as any).attachments.map((attachment: any) => (
+                                    <div
+                                      key={attachment.id}
+                                      className="flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs text-white/90"
+                                    >
+                                      <FileText className="w-3 h-3" />
+                                      <span className="truncate max-w-[80px]">{attachment.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {message.message}
+                            </div>
                           ) : (
                             <div 
                               className={`prose prose-sm max-w-none ${
@@ -1496,22 +1637,60 @@ Thank you for your consideration!`;
               )}
             </div>
             
+            {/* Pending Attachments */}
+            {pendingAttachments.length > 0 && (
+              <div className={`p-4 border-t ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                <div className="flex flex-wrap gap-2">
+                  {pendingAttachments.map((attachment) => (
+                    <div
+                      key={attachment.id}
+                      className={`relative group flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                        isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-white border-gray-300 text-gray-700'
+                      }`}
+                    >
+                      <FileText className="w-3 h-3" />
+                      <span className="truncate max-w-[120px]">{attachment.name}</span>
+                      <button
+                        onClick={() => removePendingAttachment(attachment.id)}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2 h-2" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {/* Mobile Fixed Input Bar */}
             <div className={`p-4 pb-6 border-t ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
               <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={handleChatKeyPress}
-                  placeholder="Ask me anything about your business plan..."
-                  className={`flex-1 px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 text-sm transition-all ${
-                    isDarkMode 
-                      ? 'bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-400'
-                      : 'bg-white border border-gray-300 text-gray-900 placeholder-gray-500'
-                  }`}
-                  disabled={isChatLoading}
-                />
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={handleChatKeyPress}
+                    placeholder="Ask me anything about your business plan..."
+                    className={`w-full pl-4 pr-12 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500/50 text-sm transition-all ${
+                      isDarkMode 
+                        ? 'bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-400'
+                        : 'bg-white border border-gray-300 text-gray-900 placeholder-gray-500'
+                    }`}
+                    disabled={isChatLoading}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-colors ${
+                      isDarkMode 
+                        ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-600' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    }`}
+                    title="Upload document"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                </div>
                 <button
                   onClick={sendChatMessage}
                   disabled={!chatInput.trim() || isChatLoading}
@@ -1520,6 +1699,16 @@ Thank you for your consideration!`;
                   <Send className="w-4 h-4" />
                 </button>
               </div>
+              
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".txt,.md,.pdf,.csv,text/plain,text/markdown,application/pdf,text/csv"
+                onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
+                className="hidden"
+              />
             </div>
           </div>
         </div>
@@ -1841,12 +2030,20 @@ Thank you for your consideration!`;
         showExportMenu={showExportMenu}
         chatInput={chatInput}
         showChatbot={showChatbot}
+        pendingAttachments={pendingAttachments}
+        isDragging={isDragging}
+        fileInputRef={fileInputRef}
         onChatInputChange={setChatInput}
         onSendMessage={sendChatMessage}
         onChatKeyPress={handleChatKeyPress}
         onCopyToClipboard={copyToClipboard}
         onExportMenuToggle={() => setShowExportMenu(!showExportMenu)}
         onExport={handleExport}
+        onFileUpload={handleFileUpload}
+        onRemovePendingAttachment={removePendingAttachment}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         exportOptions={exportOptions}
         renderMarkdown={renderMarkdown}
         renderChatMessage={renderChatMessage}
