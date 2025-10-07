@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Loader2, Save, FolderOpen, Moon, Sun, Settings, Trash2, Edit3, ChevronDown, ChevronRight, CheckCircle, X, MessageCircle, Send, Bot, Key } from 'lucide-react';
 import { AIClient } from '../utils/apiClient';
 import { SplitPaneView } from './SplitPaneView';
+import { StorageService, type BusinessPlan } from '../utils/database';
 
 // Extend Window interface for speech recognition
 declare global {
@@ -237,21 +238,11 @@ const BusinessPlanCreator = () => {
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [currentTemplate, setCurrentTemplate] = useState('default');
-  interface SavedPlan {
-    id: string;
-    name: string;
-    template: string;
-    data: BusinessFormData;
-    generatedPlan: string;
-    createdAt: string;
-    updatedAt: string;
-  }
-  
-  const [savedPlans, setSavedPlans] = useState<SavedPlan[]>([]);
+  const [savedPlans, setSavedPlans] = useState<BusinessPlan[]>([]);
   const [showSavedPlans, setShowSavedPlans] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ basic: true });
   const [toast, setToast] = useState<{type: string, message: string} | null>(null);
-  const [autoSaveTimeout, setAutoSaveTimeout] = useState<number | null>(null);
   const [showChatbot, setShowChatbot] = useState(false);
   const [isClosingChatbot, setIsClosingChatbot] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -463,17 +454,46 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     return formattedMessage;
   };
 
-  // Load saved data on component mount
+  // Load saved data on component mount and migrate from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('kiernan-ai-saved-plans');
-    if (saved) {
-      setSavedPlans(JSON.parse(saved));
-    }
-    
-    const darkMode = localStorage.getItem('kiernan-ai-dark-mode');
-    if (darkMode === 'true') {
-      setIsDarkMode(true);
-    }
+    const initializeDatabase = async () => {
+      try {
+        // Initialize database with error handling
+        await StorageService.initializeDatabase();
+        
+        // First check if we need to migrate from localStorage
+        const hasLocalStorageData = localStorage.getItem('kiernan-ai-saved-plans');
+        const migrationCompleted = await StorageService.getSetting('migrationCompleted', false);
+        
+        if (hasLocalStorageData && !migrationCompleted) {
+          console.log('🔄 Migrating data from localStorage to IndexedDB...');
+          await StorageService.migrateFromLocalStorage();
+          await StorageService.setSetting('migrationCompleted', true);
+        }
+        
+        // Load business plans from IndexedDB
+        const plans = await StorageService.getBusinessPlans();
+        setSavedPlans(plans);
+        console.log('✅ Loaded business plans from IndexedDB:', plans.length, 'plans');
+        
+        // Load dark mode setting
+        const darkMode = await StorageService.getSetting('darkMode', false);
+        setIsDarkMode(darkMode);
+        
+        // Load API keys
+        const apiKeys = await StorageService.getSetting('userApiKeys', { claude: '', openai: '', provider: '' });
+        setUserApiKeys(apiKeys);
+        
+        // Mark data as loaded to allow saving
+        setIsDataLoaded(true);
+        
+      } catch (error) {
+        console.error('❌ Failed to initialize database:', error);
+        setIsDataLoaded(true); // Still allow the app to work
+      }
+    };
+
+    initializeDatabase();
 
     // Initialize expanded sections
     const defaultExpanded: Record<string, boolean> = {};
@@ -563,10 +583,10 @@ Please provide helpful, specific advice. Keep your response concise but actionab
   };
 
   // Save user API keys and close modal
-  const handleSaveApiKeys = (keys: { claude: string; openai: string; provider: string }) => {
+  const handleSaveApiKeys = async (keys: { claude: string; openai: string; provider: string }) => {
     setUserApiKeys(keys);
     setShowApiKeyModal(false);
-    localStorage.setItem('userApiKeys', JSON.stringify(keys));
+    await StorageService.setSetting('userApiKeys', keys);
     
     // Set the API keys in the AI client for direct calls
     aiClient.setUserApiKeys(keys);
@@ -593,62 +613,14 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     }, 100);
   };
 
-  // Load saved API keys on mount
+
+
+  // Save dark mode preference to IndexedDB
   useEffect(() => {
-    const savedKeys = localStorage.getItem('userApiKeys');
-    if (savedKeys) {
-      try {
-        const parsed = JSON.parse(savedKeys);
-        setUserApiKeys(parsed);
-        // Set the keys in AI client if they exist
-        if (parsed.provider) {
-          aiClient.setUserApiKeys(parsed);
-          // Update AI status immediately if we have saved keys
-          setAiStatus({
-            isConfigured: true,
-            provider: parsed.provider === 'claude' ? 'Claude (User API)' : 'OpenAI (User API)',
-            loading: false,
-            developerMode: false
-          });
-          // Re-check status to ensure consistency
-          setTimeout(() => {
-            checkAIStatus();
-          }, 500);
-        }
-      } catch (e) {
-        console.error('Failed to parse saved API keys:', e);
-      }
+    if (isDataLoaded) {
+      StorageService.setSetting('darkMode', isDarkMode);
     }
-  }, []);
-
-  // Auto-save functionality
-  useEffect(() => {
-    if (autoSaveTimeout) {
-      clearTimeout(autoSaveTimeout);
-    }
-    
-    const timeout = setTimeout(() => {
-      if (formData.businessName) {
-        autoSavePlan();
-      }
-    }, 2000); // Auto-save after 2 seconds of no changes
-    
-    setAutoSaveTimeout(timeout);
-    
-    return () => {
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [formData]);
-
-  // Save plans to localStorage
-  useEffect(() => {
-    localStorage.setItem('kiernan-ai-saved-plans', JSON.stringify(savedPlans));
-  }, [savedPlans]);
-
-  // Save dark mode preference
-  useEffect(() => {
-    localStorage.setItem('kiernan-ai-dark-mode', isDarkMode.toString());
-  }, [isDarkMode]);
+  }, [isDarkMode, isDataLoaded]);
 
   const showToast = (message: string, type: string = 'success') => {
     setToast({ message, type });
@@ -663,33 +635,31 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     }, 300); // Match animation duration
   };
 
-  const autoSavePlan = () => {
-    if (!formData.businessName) return;
+  const autoSavePlan = async () => {
+    if (!formData.businessName || formData.businessName.trim().length < 3 || !generatedPlan) return;
     
-    const existingPlanIndex = savedPlans.findIndex(plan => 
-      plan.data.businessName === formData.businessName && plan.template === currentTemplate
-    );
-    
-    const timestamp = new Date().toISOString();
-    const planData = {
-      id: existingPlanIndex >= 0 ? savedPlans[existingPlanIndex].id : Date.now().toString(),
-      name: formData.businessName,
-      template: currentTemplate,
-      data: formData,
-      generatedPlan,
-      createdAt: existingPlanIndex >= 0 ? savedPlans[existingPlanIndex].createdAt : timestamp,
-      updatedAt: timestamp
-    };
-    
-    if (existingPlanIndex >= 0) {
-      setSavedPlans(prev => prev.map((plan, index) => 
-        index === existingPlanIndex ? planData : plan
-      ));
-    } else {
-      setSavedPlans(prev => [planData, ...prev]);
+    try {
+      const timestamp = new Date().toISOString();
+      const planData = {
+        name: formData.businessName,
+        template: currentTemplate,
+        data: formData,
+        generatedPlan,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      
+      await StorageService.saveBusinessPlan(planData);
+      
+      // Refresh saved plans list
+      const plans = await StorageService.getBusinessPlans();
+      setSavedPlans(plans);
+      
+      showToast('Business plan auto-saved', 'success');
+    } catch (error) {
+      console.error('Failed to auto-save plan:', error);
+      showToast('Auto-save failed', 'error');
     }
-    
-    showToast('Plan auto-saved', 'success');
   };
 
   const toggleSection = (sectionKey: string) => {
@@ -815,33 +785,53 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     setFormData(newFormData);
   };
 
-  const savePlan = () => {
-    const planName = formData.businessName || 'Untitled Plan';
-    const timestamp = new Date().toISOString();
-    
-    const newPlan = {
-      id: Date.now().toString(),
-      name: planName,
-      template: currentTemplate,
-      data: formData,
-      generatedPlan,
-      createdAt: timestamp,
-      updatedAt: timestamp
-    };
-    
-    setSavedPlans(prev => [newPlan, ...prev]);
-    showToast('Plan saved successfully!', 'success');
+  const savePlan = async () => {
+    try {
+      const planName = formData.businessName || 'Untitled Plan';
+      
+      const timestamp = new Date().toISOString();
+      const planData = {
+        name: planName,
+        template: currentTemplate,
+        data: formData,
+        generatedPlan,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      
+      await StorageService.saveBusinessPlan(planData);
+      
+      // Refresh saved plans list
+      const plans = await StorageService.getBusinessPlans();
+      setSavedPlans(plans);
+      
+      showToast('Plan saved successfully!', 'success');
+    } catch (error) {
+      console.error('Failed to save plan:', error);
+      showToast('Failed to save plan', 'error');
+    }
   };
 
-  const loadPlan = (plan: SavedPlan) => {
-    setFormData(plan.data);
+  const loadPlan = (plan: BusinessPlan) => {
+    setFormData(plan.data as BusinessFormData);
     setGeneratedPlan(plan.generatedPlan);
     setCurrentTemplate(plan.template);
     setShowSavedPlans(false);
   };
 
-  const deletePlan = (planId: string) => {
-    setSavedPlans(prev => prev.filter(plan => plan.id !== planId));
+  const deletePlan = async (planId: number) => {
+    try {
+      await StorageService.deleteBusinessPlan(planId);
+      
+      // Refresh saved plans list
+      const plans = await StorageService.getBusinessPlans();
+      setSavedPlans(plans);
+      
+      showToast('Plan deleted successfully', 'success');
+    } catch (error) {
+      console.error('Failed to delete plan:', error);
+      showToast('Failed to delete plan', 'error');
+    }
   };
 
   const generateBusinessPlan = async () => {
@@ -932,6 +922,11 @@ Make it professional, detailed, and actionable. Include specific recommendations
         setGeneratedPlan(fullResponse);
         await new Promise(resolve => setTimeout(resolve, 20));
       }
+      
+      // Auto-save after successful AI generation
+      setIsGenerating(false);
+      await autoSavePlan();
+      return;
     } catch (err) {
       // Create a fallback business plan if AI is not available
       const fallbackResponse = `# Business Plan: ${formData.businessName || 'Your Business'}
@@ -996,6 +991,9 @@ This business plan provides a roadmap for success and positions us to capitalize
     }
     
     setIsGenerating(false);
+    
+    // Auto-save the completed business plan
+    await autoSavePlan();
   };
 
   const generatePitchDeck = async () => {
@@ -1613,44 +1611,52 @@ Thank you for your consideration!`;
         {/* Saved Plans Modal */}
         {showSavedPlans && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className={`${cardClasses} backdrop-blur-lg rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto border`}>
-              <h3 className="text-xl font-bold mb-4">Saved Plans</h3>
-              {savedPlans.length === 0 ? (
-                <p className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No saved plans yet</p>
-              ) : (
-                <div className="space-y-3">
-                  {savedPlans.map((plan) => (
-                    <div key={plan.id} className={`p-4 rounded-lg border ${cardClasses} flex items-center justify-between`}>
-                      <div>
-                        <div className="font-semibold">{plan.name}</div>
-                        <div className="text-sm opacity-75">
-                          {templates[plan.template]?.name} • {new Date(plan.createdAt).toLocaleDateString()}
+            <div className={`${cardClasses} backdrop-blur-lg rounded-xl max-w-2xl w-full max-h-[80vh] border flex flex-col`}>
+              {/* Fixed header */}
+              <div className="p-6 pb-4 border-b border-white/10">
+                <h3 className="text-xl font-bold">Saved Plans</h3>
+              </div>
+              
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto p-6 py-4">
+                {savedPlans.length === 0 ? (
+                  <p className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>No saved plans yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {savedPlans.map((plan) => (
+                      <div key={plan.id} className={`p-4 rounded-lg border ${cardClasses} flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors`} onClick={() => loadPlan(plan)}>
+                        <div className="flex-1">
+                          <div className="font-semibold">{plan.name}</div>
+                          <div className="text-sm opacity-75">
+                            {templates[plan.template]?.name} • {new Date(plan.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => plan.id && deletePlan(plan.id)}
+                            className="p-2 text-red-600 hover:bg-red-50/20 rounded transition-colors"
+                            title="Delete Plan"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => loadPlan(plan)}
-                          className="p-2 text-blue-600 hover:bg-blue-50/20 rounded transition-colors"
-                        >
-                          <FolderOpen className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deletePlan(plan.id)}
-                          className="p-2 text-red-600 hover:bg-red-50/20 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Fixed footer */}
+              <div className="p-6 pt-4 border-t border-white/10">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowSavedPlans(false)}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                  >
+                    Close
+                  </button>
                 </div>
-              )}
-              <button
-                onClick={() => setShowSavedPlans(false)}
-                className="mt-4 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-              >
-                Close
-              </button>
+              </div>
             </div>
           </div>
         )}
