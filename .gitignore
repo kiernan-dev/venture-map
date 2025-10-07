@@ -1,0 +1,142 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules/
+node_modules
+.pnpm-store
+.pnpm-debug.log
+jspm_packages/
+bower_components
+
+# Environment variables (CRITICAL - contains API keys)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+server/.env
+server/.env.local
+venmap-backend/.env
+venmap-frontend/.env
+!.env.example
+!server/.env.example
+!venmap-backend/.env.example
+!venmap-frontend/.env.example
+
+# Build outputs
+dist/
+dist
+dist-ssr
+build/
+build
+*.local
+.next
+.nuxt
+.out
+.storybook-out
+build/Release
+
+# Package manager files
+npm-lock.json
+yarn.lock
+.yarn-integrity
+*.tgz
+pnpm-lock.yaml
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage and testing
+coverage/
+*.lcov
+.nyc_output
+.coverage
+.coverage.*
+
+# Cache directories
+.cache
+.parcel-cache
+.npm
+.eslintcache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Optional files
+.node_repl_history
+.lock-wscript
+.grunt
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.idea
+*.swp
+*.swo
+*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Deployment files
+.vercel
+.netlify
+.pm2
+
+# Docker (commented out - may be needed)
+# Dockerfile
+# docker-compose.yml
+# .dockerignore
+
+# Framework specific
+public
+
+# AI-assisted development files
+CLAUDE.md
+GEMINI.md
+.cursor/
+.cursorrules
+.github/copilot-instructions.md
+.anthropic/
+.claude/
+.gemini/
+.ai-prompts/
+.ai-context/
+**/CLAUDE.md
+
+# Linting config (keep examples, ignore overrides)
+eslint.config.js
+.eslintrc*
+.eslintignore
