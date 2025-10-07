@@ -1,7 +1,7 @@
 // API client for backend server integration
 
 const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-const DEVELOPER_MODE = import.meta.env.VITE_DEVELOPER_MODE !== 'false';
+const USE_BACKEND_API = import.meta.env.VITE_USE_BACKEND_API !== 'false';
 
 
 interface APIResponse {
@@ -43,7 +43,7 @@ export class AIClient {
     console.log('🔥 generateResponse called - checking API configuration...', {
       hasUserApiKeys: !!(this.userApiKeys && this.userApiKeys.provider),
       provider: this.userApiKeys?.provider || 'none',
-      developerMode: DEVELOPER_MODE
+      useBackendAPI: USE_BACKEND_API
     });
     
     // If user has API keys, use direct API calls
@@ -52,8 +52,8 @@ export class AIClient {
       return this.generateDirectResponse(prompt, context);
     }
 
-    // Skip backend API if developer mode is disabled
-    if (!DEVELOPER_MODE) {
+    // Skip backend API if backend API is disabled
+    if (!USE_BACKEND_API) {
       console.log('⚠️ Backend API disabled - using fallback response');
       return this.getFallbackResponse(prompt, 'Backend API disabled. Please configure your API keys.');
     }
@@ -217,8 +217,8 @@ Try rephrasing your question or check back in a moment once the service is resto
 
   // Check if backend is reachable
   async isConfigured(): Promise<boolean> {
-    // Skip backend check if developer mode is disabled
-    if (!DEVELOPER_MODE) {
+    // Skip backend check if backend API is disabled
+    if (!USE_BACKEND_API) {
       return false;
     }
     
@@ -244,8 +244,8 @@ Try rephrasing your question or check back in a moment once the service is resto
 
   // Get the active API provider from backend
   async getProvider(): Promise<string> {
-    // Skip backend check if developer mode is disabled
-    if (!DEVELOPER_MODE) {
+    // Skip backend check if backend API is disabled
+    if (!USE_BACKEND_API) {
       return 'Backend Disabled';
     }
     
@@ -271,8 +271,8 @@ Try rephrasing your question or check back in a moment once the service is resto
 
   // Get configuration details from backend
   async getConfigInfo(): Promise<object> {
-    // Skip backend check if developer mode is disabled
-    if (!DEVELOPER_MODE) {
+    // Skip backend check if backend API is disabled
+    if (!USE_BACKEND_API) {
       return {
         backend: {
           configured: false,
