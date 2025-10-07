@@ -12,7 +12,16 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Rate limiting
+// CRITICAL: Set trust proxy FIRST, before any middleware
+app.set('trust proxy', true);
+
+// Add base path for subdirectory deployment
+const basePath = process.env.BASE_PATH || '';
+
+// Security middleware (before rate limiter)
+app.use(helmet());
+
+// Rate limiting (AFTER trust proxy is set)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
@@ -21,8 +30,6 @@ const limiter = rateLimit({
   },
 });
 
-// Security middleware
-app.use(helmet());
 app.use(limiter);
 
 // CORS configuration
@@ -37,17 +44,18 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health check endpoint
-app.get('/health', (req, res) => {
+// Health check endpoint (with base path support)
+app.get(`${basePath}/health`, (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development'
+    env: process.env.NODE_ENV || 'development',
+    basePath: basePath || 'root'
   });
 });
 
-// API routes
-app.use('/api', aiRoutes);
+// API routes (with base path support)
+app.use(`${basePath}/api`, aiRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -72,10 +80,13 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   const aiService = AIService.getInstance();
   console.log(`🚀 Backend server running on port ${PORT}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔗 Health check: http://localhost:${PORT}${basePath}/health`);
   console.log(`🤖 AI Provider: ${aiService.getActiveProvider()}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📡 CORS enabled for: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  if (basePath) {
+    console.log(`📂 Base path: ${basePath}`);
+  }
 });
 
 export default app;
