@@ -70,7 +70,7 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  const aiService = new AIService();
+  const aiService = AIService.getInstance();
   console.log(`🚀 Backend server running on port ${PORT}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
   console.log(`🤖 AI Provider: ${aiService.getActiveProvider()}`);

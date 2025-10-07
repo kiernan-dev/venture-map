@@ -2,11 +2,29 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import fetch from 'node-fetch';
 
 export class AIService {
+  static instance = null;
+  
+  static getInstance() {
+    if (!AIService.instance) {
+      AIService.instance = new AIService();
+    }
+    return AIService.instance;
+  }
+  
   constructor() {
-    this.claudeApiKey = process.env.CLAUDE_API_KEY;
-    this.openaiApiKey = process.env.OPENAI_API_KEY;
-    this.geminiApiKey = process.env.GEMINI_API_KEY;
-    this.customApiKey = process.env.CUSTOM_API_KEY;
+    this.claudeApiKey = this.validateApiKey(process.env.CLAUDE_API_KEY);
+    this.openaiApiKey = this.validateApiKey(process.env.OPENAI_API_KEY);
+    this.geminiApiKey = this.validateApiKey(process.env.GEMINI_API_KEY);
+    this.customApiKey = this.validateApiKey(process.env.CUSTOM_API_KEY);
+    
+    // Debug logging
+    // console.log('🔍 API Keys Debug:', {
+    //   customApiKey: this.customApiKey ? 'SET' : 'NULL',
+    //   customBaseUrl: process.env.CUSTOM_API_BASE_URL || 'NULL',
+    //   geminiApiKey: this.geminiApiKey ? 'SET' : 'NULL',
+    //   claudeApiKey: this.claudeApiKey ? 'SET' : 'NULL',
+    //   openaiApiKey: this.openaiApiKey ? 'SET' : 'NULL'
+    // });
     
     // Custom API configuration
     this.customConfig = {
@@ -18,6 +36,36 @@ export class AIService {
       maxTokens: parseInt(process.env.CUSTOM_API_MAX_TOKENS || '4000'),
       temperature: parseFloat(process.env.CUSTOM_API_TEMPERATURE || '0.7')
     };
+  }
+
+  // Validate API key - reject empty strings, undefined, or placeholder values
+  validateApiKey(key) {
+    if (!key || key.trim() === '') {
+      return null;
+    }
+    
+    // Common placeholder values to ignore
+    const placeholders = [
+      'your-api-key-here',
+      'your_api_key_here',
+      'your-actual-api-key-here',
+      'insert-your-key-here',
+      'add-your-key-here',
+      'sk-placeholder',
+      'example-key'
+    ];
+    
+    // Check if it's a placeholder
+    if (placeholders.includes(key.toLowerCase())) {
+      return null;
+    }
+    
+    // Check minimum length (most real API keys are at least 20 chars)
+    if (key.length < 10) {
+      return null;
+    }
+    
+    return key;
   }
 
   async generateResponse(prompt, context) {

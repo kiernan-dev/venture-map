@@ -378,15 +378,24 @@ const BusinessPlanCreator = () => {
       
       const aiClient = AIClient.getInstance();
       
-      // Prepare context from form data
+      // Prepare context from form data and generated plan
       const contextData = Object.entries(formData)
         .filter(([, value]) => value && value.trim())
         .map(([key, value]) => `${fieldLabels[key as keyof typeof fieldLabels]}: ${value}`)
         .join('\n');
       
-      const context = contextData ? `Current business context:\n${contextData}` : '';
+      let context = '';
+      if (contextData) {
+        context += `Current business form data:\n${contextData}\n\n`;
+      }
       
-      const prompt = `You are a helpful business consultant. The user asked: "${userMessage.message}"
+      if (generatedPlan && generatedPlan.trim()) {
+        context += `Generated Business Plan:\n${generatedPlan}`;
+      }
+      
+      const prompt = `You are a helpful business consultant with access to the user's business information. The user asked: "${userMessage.message}"
+
+${context ? 'Use the provided business context to give specific, relevant advice. Reference specific details from their business plan when applicable.' : 'Provide general business advice since no specific business context is available.'}
 
 Please provide helpful, specific advice. Keep your response concise but actionable.`;
 

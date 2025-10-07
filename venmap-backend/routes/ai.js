@@ -2,7 +2,6 @@ import express from 'express';
 import { AIService } from '../services/aiService.js';
 
 const router = express.Router();
-const aiService = new AIService();
 
 // Generate AI response endpoint
 router.post('/generate', async (req, res) => {
@@ -31,11 +30,11 @@ router.post('/generate', async (req, res) => {
     }
 
     // Generate response using AI service
-    const response = await aiService.generateResponse(prompt, context);
+    const response = await AIService.getInstance().generateResponse(prompt, context);
 
     res.json({
       response,
-      provider: aiService.getActiveProvider(),
+      provider: AIService.getInstance().getActiveProvider(),
       timestamp: new Date().toISOString()
     });
 
@@ -71,12 +70,12 @@ router.post('/generate', async (req, res) => {
 router.get('/config', (req, res) => {
   try {
     const useBackendKeys = process.env.USE_BACKEND_API_KEYS === 'true';
-    const config = aiService.getConfigInfo();
+    const config = AIService.getInstance().getConfigInfo();
     
     res.json({
       config,
-      activeProvider: aiService.getActiveProvider(),
-      isConfigured: aiService.isConfigured(),
+      activeProvider: AIService.getInstance().getActiveProvider(),
+      isConfigured: AIService.getInstance().isConfigured(),
       useBackendKeys: useBackendKeys,
       timestamp: new Date().toISOString()
     });
@@ -93,7 +92,7 @@ router.get('/config', (req, res) => {
 // Health check for AI services
 router.get('/health', async (req, res) => {
   try {
-    const health = await aiService.healthCheck();
+    const health = await AIService.getInstance().healthCheck();
     res.json({
       health,
       timestamp: new Date().toISOString()
