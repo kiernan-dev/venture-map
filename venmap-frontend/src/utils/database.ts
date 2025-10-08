@@ -2,12 +2,20 @@
 import Dexie, { type Table } from 'dexie';
 
 // Database interfaces
+export type DocumentType = 'businessPlan' | 'pitchDeck';
+
+export interface DocumentContent {
+  businessPlan?: string;
+  pitchDeck?: string;
+}
+
 export interface BusinessPlan {
   id?: number;
   name: string;
   template: string;
   data: Record<string, string>; // Form data
-  generatedPlan: string;
+  documents: DocumentContent;
+  activeTab: DocumentType;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,13 +66,33 @@ export class VentureMapDB extends Dexie {
   constructor() {
     super('VentureMapDatabase');
     
-    // Define schema
+    // Define schema v1 (original)
     this.version(1).stores({
       businessPlans: '++id, name, template, createdAt, updatedAt',
       chatSessions: '++id, businessPlanId, title, createdAt, updatedAt',
       chatMessages: '++id, sessionId, type, timestamp',
       uploadedDocuments: '++id, name, type, uploadedAt, businessPlanId',
       appSettings: '++id, &key, updatedAt'
+    });
+
+    // Define schema v2 (documents structure)
+    this.version(2).stores({
+      businessPlans: '++id, name, template, activeTab, createdAt, updatedAt',
+      chatSessions: '++id, businessPlanId, title, createdAt, updatedAt',
+      chatMessages: '++id, sessionId, type, timestamp',
+      uploadedDocuments: '++id, name, type, uploadedAt, businessPlanId',
+      appSettings: '++id, &key, updatedAt'
+    }).upgrade(tx => {
+      // Migrate existing business plans to new documents structure
+      return tx.table('businessPlans').toCollection().modify((plan: Record<string, unknown>) => {
+        if (plan.generatedPlan !== undefined) {
+          plan.documents = {
+            businessPlan: plan.generatedPlan
+          };
+          plan.activeTab = 'businessPlan';
+          delete plan.generatedPlan;
+        }
+      });
     });
   }
 
@@ -266,7 +294,10 @@ export class StorageService {
               name: plan.name || plan.data?.businessName || 'Untitled Plan',
               template: plan.template || 'Standard Business Plan',
               data: plan.data || {},
-              generatedPlan: plan.generatedPlan || '',
+              documents: {
+                businessPlan: plan.generatedPlan || '',
+              },
+              activeTab: 'businessPlan',
               createdAt: plan.createdAt || new Date().toISOString(),
               updatedAt: plan.updatedAt || new Date().toISOString()
             });

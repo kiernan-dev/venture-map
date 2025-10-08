@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { FileText, Loader2, Save, FolderOpen, Moon, Sun, Settings, Trash2, Edit3, ChevronDown, ChevronRight, CheckCircle, X, MessageCircle, Send, Bot, Key, Paperclip, Upload } from 'lucide-react';
 import { AIClient } from '../utils/apiClient';
 import { SplitPaneView } from './SplitPaneView';
-import { StorageService, type BusinessPlan } from '../utils/database';
+import { StorageService, type BusinessPlan, type DocumentType, type DocumentContent } from '../utils/database';
 
 // Template interface
 interface Template {
@@ -324,7 +324,9 @@ const BusinessPlanCreator = () => {
     integrationNeeds: ''
   });
   
-  const [generatedPlan, setGeneratedPlan] = useState('');
+  // Document state - using new tabbed structure
+  const [documents, setDocuments] = useState<DocumentContent>({});
+  const [activeTab, setActiveTab] = useState<DocumentType>('businessPlan');
   const [isGenerating, setIsGenerating] = useState(false);
   
   const [error, setError] = useState('');
@@ -382,6 +384,46 @@ const BusinessPlanCreator = () => {
     }
   }, [showChatbot, chatMessages.length]);
 
+  // Optimized tab management handlers
+  const handleTabChange = useCallback((newTab: DocumentType) => {
+    setActiveTab(newTab);
+  }, []);
+
+  const handleTabClose = useCallback((tabId: DocumentType) => {
+    if (tabId === 'businessPlan') return; // Can't close business plan tab
+    
+    setDocuments(prev => {
+      const updated = { ...prev };
+      delete updated[tabId];
+      return updated;
+    });
+    
+    // Switch to business plan if closing active tab
+    if (activeTab === tabId) {
+      setActiveTab('businessPlan');
+    }
+  }, [activeTab]);
+
+  // Get current document content based on active tab
+  const getCurrentDocument = useCallback(() => {
+    return documents[activeTab] || '';
+  }, [documents, activeTab]);
+
+
+  // Get all document content for AI context
+  const getAllDocumentContext = useCallback(() => {
+    const context: string[] = [];
+    
+    if (documents.businessPlan) {
+      context.push(`Business Plan:\n${documents.businessPlan}`);
+    }
+    
+    if (documents.pitchDeck) {
+      context.push(`Pitch Deck:\n${documents.pitchDeck}`);
+    }
+    
+    return context.join('\n\n---\n\n');
+  }, [documents]);
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
@@ -413,8 +455,10 @@ const BusinessPlanCreator = () => {
         context += `Current business form data:\n${contextData}\n\n`;
       }
       
-      if (generatedPlan && generatedPlan.trim()) {
-        context += `Generated Business Plan:\n${generatedPlan}\n\n`;
+      // Add all document content to context
+      const documentContext = getAllDocumentContext();
+      if (documentContext.trim()) {
+        context += `Generated Documents:\n${documentContext}\n\n`;
       }
       
       // Add message attachments to context
@@ -779,7 +823,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
   };
 
   const autoSavePlan = async () => {
-    if (!formData.businessName || formData.businessName.trim().length < 3 || !generatedPlan) return;
+    if (!formData.businessName || formData.businessName.trim().length < 3 || !documents.businessPlan) return;
     
     try {
       const timestamp = new Date().toISOString();
@@ -787,7 +831,8 @@ Please provide helpful, specific advice. Keep your response concise but actionab
         name: formData.businessName,
         template: currentTemplate,
         data: formData,
-        generatedPlan,
+        documents,
+        activeTab,
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -937,7 +982,8 @@ Please provide helpful, specific advice. Keep your response concise but actionab
         name: planName,
         template: currentTemplate,
         data: formData,
-        generatedPlan,
+        documents,
+        activeTab,
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -957,7 +1003,8 @@ Please provide helpful, specific advice. Keep your response concise but actionab
 
   const loadPlan = (plan: BusinessPlan) => {
     setFormData(plan.data as BusinessFormData);
-    setGeneratedPlan(plan.generatedPlan);
+    setDocuments(plan.documents || {});
+    setActiveTab(plan.activeTab || 'businessPlan');
     setCurrentTemplate(plan.template);
     setShowSavedPlans(false);
   };
@@ -980,7 +1027,9 @@ Please provide helpful, specific advice. Keep your response concise but actionab
   const generateBusinessPlan = async () => {
     setIsGenerating(true);
     setError('');
-    setGeneratedPlan('');
+    // Clear business plan document and switch to it
+    setDocuments(prev => ({ ...prev, businessPlan: '' }));
+    setActiveTab('businessPlan');
     
     const relevantFields = templates[currentTemplate].fields.filter(field => 
       formData[field] && formData[field].trim() !== ''
@@ -1062,7 +1111,7 @@ Make it professional, detailed, and actionable. Include specific recommendations
       let fullResponse = '';
       for (let i = 0; i < words.length; i++) {
         fullResponse += words[i] + ' ';
-        setGeneratedPlan(fullResponse);
+        setDocuments(prev => ({ ...prev, businessPlan: fullResponse }));
         await new Promise(resolve => setTimeout(resolve, 20));
       }
       
@@ -1128,7 +1177,7 @@ ${formData.fundingRequest || 'We are seeking investment to support our growth in
 
 This business plan provides a roadmap for success and positions us to capitalize on market opportunities while building a sustainable and profitable enterprise.`;
 
-      setGeneratedPlan(fallbackResponse);
+      setDocuments(prev => ({ ...prev, businessPlan: fallbackResponse }));
       setError('AI service not configured. Using fallback business plan template. Please add your API key to .env file for enhanced AI features.');
       console.error('Error generating business plan: AI service not configured');
     }
@@ -1140,12 +1189,15 @@ This business plan provides a roadmap for success and positions us to capitalize
   };
 
   const generatePitchDeck = async () => {
-    if (!generatedPlan) {
+    if (!documents.businessPlan) {
       showToast('Please generate a business plan first!', 'error');
       return;
     }
 
     setIsGenerating(true);
+    
+    // Create new pitch deck tab and switch to it
+    setActiveTab('pitchDeck');
     
     const pitchDeckContent = `---
 # Slide 1: Title Slide
@@ -1220,7 +1272,7 @@ This business plan provides a roadmap for success and positions us to capitalize
 Thank you for your consideration!`;
 
     try {
-      setGeneratedPlan(pitchDeckContent);
+      setDocuments(prev => ({ ...prev, pitchDeck: pitchDeckContent }));
     } catch {
       setError('Failed to generate pitch deck. Please try again.');
     }
@@ -1229,8 +1281,9 @@ Thank you for your consideration!`;
   };
 
   const handleExport = (format: string) => {
-    const content = generatedPlan;
-    const businessName = (formData.businessName || 'Business-Plan').replace(/[^a-zA-Z0-9]/g, '-');
+    const content = getCurrentDocument();
+    const docType = activeTab === 'businessPlan' ? 'Business-Plan' : 'Pitch-Deck';
+    const businessName = (formData.businessName || docType).replace(/[^a-zA-Z0-9]/g, '-');
     
     switch (format) {
       case 'md':
@@ -1456,8 +1509,10 @@ Thank you for your consideration!`;
   };
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(generatedPlan);
-    showToast('Copied to clipboard!', 'success');
+    const content = getCurrentDocument();
+    navigator.clipboard.writeText(content);
+    const docType = activeTab === 'businessPlan' ? 'Business plan' : 'Pitch deck';
+    showToast(`${docType} copied to clipboard!`, 'success');
   };
 
   const renderMarkdown = (text: string) => {
@@ -1759,7 +1814,7 @@ Thank you for your consideration!`;
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent mb-2">
-                Kiernan [ai]
+                VentureMap
               </h1>
               <h2 className="text-2xl font-semibold mb-2">Business Plan Creator</h2>
               <p className="text-sm opacity-80">Transform your ideas into comprehensive business plans</p>
@@ -2025,7 +2080,7 @@ Thank you for your consideration!`;
               )}
             </button>
             
-            {generatedPlan && (
+            {documents.businessPlan && (
               <button
                 onClick={generatePitchDeck}
                 disabled={isGenerating}
@@ -2054,7 +2109,8 @@ Thank you for your consideration!`;
 
       {/* Right Side - Split Pane View */}
       <SplitPaneView
-        generatedPlan={generatedPlan}
+        documents={documents}
+        activeTab={activeTab}
         chatMessages={chatMessages}
         isChatLoading={isChatLoading}
         isGenerating={isGenerating}
@@ -2076,6 +2132,8 @@ Thank you for your consideration!`;
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onTabChange={handleTabChange}
+        onTabClose={handleTabClose}
         exportOptions={exportOptions}
         renderMarkdown={renderMarkdown}
         renderChatMessage={renderChatMessage}

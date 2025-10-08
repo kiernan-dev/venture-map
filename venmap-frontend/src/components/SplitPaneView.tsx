@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, Copy, Download, ChevronDown, Send, FileText, Loader2, Paperclip, Upload, X } from 'lucide-react';
+import DocumentTabs from './DocumentTabs';
+import { Presentation } from 'lucide-react';
+import type { DocumentType, DocumentContent } from '../utils/database';
 
 interface ChatMessage {
   id: number;
@@ -26,7 +29,8 @@ interface ExportOption {
 
 interface SplitPaneViewProps {
   // Content props
-  generatedPlan: string;
+  documents: DocumentContent;
+  activeTab: DocumentType;
   chatMessages: ChatMessage[];
   isChatLoading: boolean;
   isGenerating: boolean;
@@ -52,6 +56,8 @@ interface SplitPaneViewProps {
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  onTabChange: (tabId: DocumentType) => void;
+  onTabClose?: (tabId: DocumentType) => void;
   
   // Data
   exportOptions: ExportOption[];
@@ -60,7 +66,8 @@ interface SplitPaneViewProps {
 }
 
 export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
-  generatedPlan,
+  documents,
+  activeTab,
   chatMessages,
   isChatLoading,
   isGenerating,
@@ -82,10 +89,37 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
   onDragOver,
   onDragLeave,
   onDrop,
+  onTabChange,
+  onTabClose,
   exportOptions,
   renderMarkdown,
   renderChatMessage
 }) => {
+  // Helper function to create tab configurations
+  const createDocumentTabs = (docs: DocumentContent) => {
+    const tabs = [];
+
+    // Business Plan tab (always present)
+    tabs.push({
+      id: 'businessPlan' as DocumentType,
+      title: 'Business Plan',
+      icon: <FileText className="w-4 h-4" />,
+      hasContent: Boolean(docs.businessPlan?.trim())
+    });
+
+    // Pitch Deck tab (only if exists)
+    if (docs.pitchDeck !== undefined) {
+      tabs.push({
+        id: 'pitchDeck' as DocumentType,
+        title: 'Pitch Deck',
+        icon: <Presentation className="w-4 h-4" />,
+        hasContent: Boolean(docs.pitchDeck?.trim())
+      });
+    }
+
+    return tabs;
+  };
+
   // Split pane state
   const [splitPaneHeight, setSplitPaneHeight] = useState(60); // percentage for plan section (top)
   const [isDragging, setIsDragging] = useState(false);
@@ -146,7 +180,7 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
     }
   }, [chatMessages, isChatLoading, showChatbot]);
 
-  const showContent = generatedPlan || chatMessages.length > 0;
+  const showContent = documents[activeTab] || chatMessages.length > 0;
 
   return (
     <div className={`w-full lg:w-1/2 ${cardClasses} backdrop-blur-lg border-l border-white/50 flex flex-col relative z-5 hidden lg:flex split-pane-container`}>
@@ -159,9 +193,11 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
           >
             {/* Plan Header */}
             <div className={`border-b border-white/50 p-4 flex items-center justify-between ${cardClasses} backdrop-blur-sm shrink-0`}>
-              <h3 className="font-semibold">Generated Plan</h3>
+              <h3 className="font-semibold">
+                {activeTab === 'businessPlan' ? 'Business Plan' : 'Pitch Deck'}
+              </h3>
               <div className="flex gap-2">
-                {generatedPlan && (
+                {documents[activeTab] && (
                   <>
                     <button
                       onClick={onCopyToClipboard}
@@ -209,12 +245,21 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
               </div>
             </div>
             
-            {/* Plan Content */}
+            {/* Document Tabs */}
+            <DocumentTabs
+              activeTab={activeTab}
+              availableTabs={createDocumentTabs(documents)}
+              onTabChange={onTabChange}
+              onTabClose={onTabClose}
+              className="border-b border-gray-200 dark:border-gray-700"
+            />
+
+            {/* Document Content */}
             <div className="flex-1 p-8 overflow-y-auto">
-              {generatedPlan ? (
+              {documents[activeTab] ? (
                 <div 
                   className={`prose prose-lg max-w-none ${isDarkMode ? 'prose-invert' : ''}`}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(generatedPlan) }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(documents[activeTab] || '') }}
                 />
               ) : (
                 <div className="text-center py-12">
@@ -227,8 +272,8 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
                   </div>
                   <p className={`mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     {isGenerating 
-                      ? 'Generating your business plan...' 
-                      : 'Your business plan will appear here after generation'
+                      ? `Generating your ${activeTab === 'businessPlan' ? 'business plan' : 'pitch deck'}...` 
+                      : `Your ${activeTab === 'businessPlan' ? 'business plan' : 'pitch deck'} will appear here after generation`
                     }
                   </p>
                   {isGenerating && (

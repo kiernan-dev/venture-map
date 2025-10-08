@@ -1,6 +1,9 @@
 # VentureMap
 
-An AI-powered business plan generator that creates comprehensive, professional business plans using multiple AI providers including Claude, OpenAI, Gemini, and custom APIs.
+An AI-powered business planning tool that generates comprehensive business plans and
+pitch decks. The intelligent assistant maintains full context awareness across all
+your documents and provides actionable insights to help refine your strategy based
+on your specific business model and market.
 
 ## 🚀 Quick Start
 
