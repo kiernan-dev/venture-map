@@ -32,16 +32,14 @@ venmap-frontend/.env
 
 # Build outputs
 dist/
-dist
-dist-ssr
 build/
-build
+.next/
+out/
 *.local
 .next
 .nuxt
 .out
 .storybook-out
-build/Release
 
 # Package manager files
 npm-lock.json
@@ -114,14 +112,6 @@ Thumbs.db
 .vercel
 .netlify
 .pm2
-
-# Docker (commented out - may be needed)
-# Dockerfile
-# docker-compose.yml
-# .dockerignore
-
-# Framework specific
-public
 
 # AI-assisted development files
 CLAUDE.md
