@@ -194,7 +194,7 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
             {/* Plan Header */}
             <div className={`border-b border-white/50 p-4 flex items-center justify-between ${cardClasses} backdrop-blur-sm shrink-0`}>
               <h3 className="font-semibold">
-                {activeTab === 'businessPlan' ? 'Business Plan' : 'Pitch Deck'}
+                Document Hub
               </h3>
               <div className="flex gap-2">
                 {documents[activeTab] && (
