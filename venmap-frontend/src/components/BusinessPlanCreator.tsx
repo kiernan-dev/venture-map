@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { FileText, Loader2, Save, FolderOpen, Moon, Sun, Settings, Trash2, Edit3, ChevronDown, ChevronRight, CheckCircle, X, MessageCircle, Send, Bot, Key, Paperclip, Upload } from 'lucide-react';
 import { AIClient } from '../utils/apiClient';
 import { SplitPaneView } from './SplitPaneView';
@@ -18,6 +18,35 @@ interface Template {
   description: string;
   icon: string;
   fields: string[];
+}
+
+// Chat message interface
+interface ChatMessage {
+  id: number;
+  type: 'user' | 'bot';
+  message: string;
+  timestamp: Date;
+  attachments?: FileAttachment[];
+}
+
+// File attachment interface
+interface FileAttachment {
+  id: number;
+  name: string;
+  type: string;
+  content: string;
+  size: number;
+  uploadedAt: string;
+}
+
+// API Config Info interface
+interface APIConfigInfo {
+  backend?: {
+    status: string;
+    configured?: boolean;
+    url?: string;
+  };
+  developerMode?: boolean;
 }
 
 // Form data interface
@@ -57,6 +86,16 @@ const ApiKeyForm: React.FC<ApiKeyFormProps> = ({ isDarkMode, userApiKeys, onSave
   });
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{success: boolean, message: string} | null>(null);
+  const apiValidationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (apiValidationTimeoutRef.current) {
+        clearTimeout(apiValidationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const testApiKey = async (provider: string, apiKey: string) => {
     try {
@@ -91,8 +130,8 @@ const ApiKeyForm: React.FC<ApiKeyFormProps> = ({ isDarkMode, userApiKeys, onSave
         return response.ok;
       }
       return false;
-    } catch {
-      console.error('API key test failed');
+    } catch (error) {
+      console.error('API key test failed:', error);
       return false;
     }
   };
@@ -114,7 +153,7 @@ const ApiKeyForm: React.FC<ApiKeyFormProps> = ({ isDarkMode, userApiKeys, onSave
       
       if (isValid) {
         setValidationResult({ success: true, message: 'API key validated successfully!' });
-        setTimeout(() => {
+        apiValidationTimeoutRef.current = setTimeout(() => {
           onSave(formData);
         }, 1000);
       } else {
@@ -245,7 +284,7 @@ const BusinessPlanCreator = () => {
   const [toast, setToast] = useState<{type: string, message: string} | null>(null);
   const [showChatbot, setShowChatbot] = useState(false);
   const [isClosingChatbot, setIsClosingChatbot] = useState(false);
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   // Speech recognition state removed - feature not currently implemented
@@ -257,10 +296,22 @@ const BusinessPlanCreator = () => {
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   
   // Document upload state
-  // const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]); // Persistent documents - now using per-message attachments
-  const [pendingAttachments, setPendingAttachments] = useState<any[]>([]); // Attachments for current message
+  // const [uploadedDocuments, setUploadedDocuments] = useState<FileAttachment[]>([]); // Persistent documents - now using per-message attachments
+  const [pendingAttachments, setPendingAttachments] = useState<FileAttachment[]>([]); // Attachments for current message
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const chatbotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const aiStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      if (chatbotTimeoutRef.current) clearTimeout(chatbotTimeoutRef.current);
+      if (aiStatusTimeoutRef.current) clearTimeout(aiStatusTimeoutRef.current);
+    };
+  }, []);
   
   // AI client instance
   const aiClient = AIClient.getInstance();
@@ -289,7 +340,7 @@ const BusinessPlanCreator = () => {
   
   const [error, setError] = useState('');
 
-  const formSections: Record<string, {title: string, fields: string[], defaultOpen: boolean}> = {
+  const formSections = useMemo(() => ({
     basic: {
       title: 'Basic Information',
       fields: ['businessName', 'industry', 'complianceType'],
@@ -320,7 +371,7 @@ const BusinessPlanCreator = () => {
       fields: ['technicalRequirements', 'securityConsiderations', 'integrationNeeds'],
       defaultOpen: false
     }
-  };
+  }), []);
 
   // Speech recognition initialization removed - feature not implemented
 
@@ -341,7 +392,7 @@ const BusinessPlanCreator = () => {
         timestamp: new Date()
       }]);
     }
-  }, [showChatbot]);
+  }, [showChatbot, chatMessages.length]);
 
   // Voice input functionality - currently unused
   // const toggleVoiceInput = () => {
@@ -361,7 +412,7 @@ const BusinessPlanCreator = () => {
   const sendChatMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
     
-    const userMessage = {
+    const userMessage: ChatMessage = {
       id: Date.now(),
       type: 'user',
       message: chatInput.trim(),
@@ -409,7 +460,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
       try {
         const response = await aiClient.generateResponse(prompt, context);
         
-        const botMessage = {
+        const botMessage: ChatMessage = {
           id: Date.now() + 1,
           type: 'bot',
           message: response,
@@ -421,7 +472,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
         console.warn('AI API error:', apiError);
         const fallbackResponse = `I'm having trouble connecting to my AI service. Please check your backend server connection and API configuration.`;
         
-        const botMessage = {
+        const botMessage: ChatMessage = {
           id: Date.now() + 1,
           type: 'bot',
           message: fallbackResponse,
@@ -535,9 +586,9 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     }
   };
 
-  const renderChatMessage = (message: any) => {
+  const renderChatMessage = (messageText: string) => {
     // Format bot messages for better readability
-    const formattedMessage = message
+    const formattedMessage = messageText
       // Convert **text** to bold
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold">$1</strong>')
       // Convert bullet points to proper list items with better spacing
@@ -612,13 +663,10 @@ Please provide helpful, specific advice. Keep your response concise but actionab
       defaultExpanded[key] = section.defaultOpen;
     });
     setExpandedSections(defaultExpanded);
-
-    // Check AI client status
-    checkAIStatus();
-  }, []);
+  }, [formSections]);
 
   // Function to check AI client status
-  const checkAIStatus = async () => {
+  const checkAIStatus = useCallback(async () => {
     try {
       const [configInfo, isConfigured, provider] = await Promise.all([
         aiClient.getConfigInfo().catch(() => ({ backend: { status: 'error' } })),
@@ -626,7 +674,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
         aiClient.getProvider().catch(() => 'Unknown')
       ]);
       
-      const developerMode = (configInfo as any)?.backend?.status === 'connected' && (configInfo as any)?.developerMode !== false;
+      const developerMode = (configInfo as APIConfigInfo)?.backend?.status === 'connected' && (configInfo as APIConfigInfo)?.developerMode !== false;
       
       // If we have user API keys set, we're configured regardless of backend status
       const userKeysConfigured = !!(userApiKeys && userApiKeys.provider);
@@ -664,7 +712,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
         configured: finalIsConfigured,
         developerMode,
         userKeysConfigured,
-        backendStatus: (configInfo as any)?.backend?.status
+        backendStatus: (configInfo as APIConfigInfo)?.backend?.status
       });
 
       // Show API key modal if developer mode is off and no user keys and backend not configured
@@ -691,7 +739,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
         setShowApiKeyModal(true);
       }
     }
-  };
+  }, [userApiKeys, aiClient]);
 
   // Save user API keys and close modal
   const handleSaveApiKeys = async (keys: { claude: string; openai: string; provider: string }) => {
@@ -719,7 +767,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     });
     
     // Force a UI update to ensure status indicators refresh
-    setTimeout(() => {
+    aiStatusTimeoutRef.current = setTimeout(() => {
       checkAIStatus();
     }, 100);
   };
@@ -733,14 +781,24 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     }
   }, [isDarkMode, isDataLoaded]);
 
+  // Check AI status after checkAIStatus is defined
+  useEffect(() => {
+    checkAIStatus();
+  }, [checkAIStatus]);
+
   const showToast = (message: string, type: string = 'success') => {
+    // Clear existing timeout to prevent multiple toasts
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
   };
 
   const handleCloseChatbot = () => {
     setIsClosingChatbot(true);
-    setTimeout(() => {
+    chatbotTimeoutRef.current = setTimeout(() => {
       setShowChatbot(false);
       setIsClosingChatbot(false);
     }, 300); // Match animation duration
@@ -955,7 +1013,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
     );
     
     const formContent = relevantFields.map(field => 
-      `${fieldLabels[field as keyof typeof fieldLabels]}: ${(formData as any)[field]}`
+      `${fieldLabels[field as keyof typeof fieldLabels]}: ${formData[field as keyof BusinessFormData]}`
     ).join('\n\n');
     
     const complianceInfo = formData.complianceType ? `\nCompliance Requirements: ${formData.complianceType}` : '';
@@ -1038,7 +1096,7 @@ Make it professional, detailed, and actionable. Include specific recommendations
       setIsGenerating(false);
       await autoSavePlan();
       return;
-    } catch (err) {
+    } catch {
       // Create a fallback business plan if AI is not available
       const fallbackResponse = `# Business Plan: ${formData.businessName || 'Your Business'}
 
@@ -1098,7 +1156,7 @@ This business plan provides a roadmap for success and positions us to capitalize
 
       setGeneratedPlan(fallbackResponse);
       setError('AI service not configured. Using fallback business plan template. Please add your API key to .env file for enhanced AI features.');
-      console.error('Error generating business plan:', err);
+      console.error('Error generating business plan: AI service not configured');
     }
     
     setIsGenerating(false);
@@ -1189,7 +1247,7 @@ Thank you for your consideration!`;
 
     try {
       setGeneratedPlan(pitchDeckContent);
-    } catch (err) {
+    } catch {
       setError('Failed to generate pitch deck. Please try again.');
     }
     
@@ -1214,7 +1272,7 @@ Thank you for your consideration!`;
         exportToGoogleSheets(content, businessName);
         break;
       case 'notion':
-        exportToNotion(content, businessName);
+        exportToNotion(content);
         break;
       case 'ppt':
         exportToPowerPoint(content, businessName);
@@ -1351,7 +1409,7 @@ Thank you for your consideration!`;
     sections.forEach(section => {
       if (section.trim()) {
         const lines = section.split('\n');
-        const title = lines[0].replace(/[#\*]/g, '').trim();
+        const title = lines[0].replace(/[#*]/g, '').trim();
         const body = lines.slice(1).join(' ').replace(/"/g, '""').trim();
         csvContent += `"${title}","${body}"\n`;
       }
@@ -1367,7 +1425,7 @@ Thank you for your consideration!`;
     }, 500);
   };
 
-  const exportToNotion = (content: string, _filename: string) => {
+  const exportToNotion = (content: string) => {
     // Copy content and provide Notion instructions
     navigator.clipboard.writeText(content).then(() => {
       const notionUrl = 'https://www.notion.so/';
@@ -1432,7 +1490,7 @@ Thank you for your consideration!`;
     if (!text) return '';
     
     // Simple markdown to HTML conversion - let prose handle the styling
-    let html = text
+    const html = text
       .replace(/^---$/gm, '<hr>')
       .replace(/^# (.*$)/gm, '<h1>$1</h1>')
       .replace(/^## (.*$)/gm, '<h2>$1</h2>')
@@ -1559,9 +1617,9 @@ Thank you for your consideration!`;
                           {message.type === 'user' ? (
                             <div>
                               {/* Show attachments for user messages */}
-                              {(message as any).attachments && (message as any).attachments.length > 0 && (
+                              {message.attachments && message.attachments.length > 0 && (
                                 <div className="mb-2 flex flex-wrap gap-1">
-                                  {(message as any).attachments.map((attachment: any) => (
+                                  {message.attachments.map((attachment: FileAttachment) => (
                                     <div
                                       key={attachment.id}
                                       className="flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs text-white/90"
@@ -1921,7 +1979,7 @@ Thank you for your consideration!`;
                             <select
                               id={`field-${field}`}
                               name={field}
-                              value={(formData as any)[field]}
+                              value={formData[field as keyof BusinessFormData]}
                               onChange={(e) => handleInputChange(field, e.target.value)}
                               className={`w-full px-3 py-2 backdrop-blur-sm border rounded-md focus:outline-none focus:ring-2 transition-all ${inputClasses}`}
                             >
@@ -1934,7 +1992,7 @@ Thank you for your consideration!`;
                             <select
                               id={`field-${field}`}
                               name={field}
-                              value={(formData as any)[field]}
+                              value={formData[field as keyof BusinessFormData]}
                               onChange={(e) => handleInputChange(field, e.target.value)}
                               className={`w-full px-3 py-2 backdrop-blur-sm border rounded-md focus:outline-none focus:ring-2 transition-all ${inputClasses}`}
                             >
@@ -1948,7 +2006,7 @@ Thank you for your consideration!`;
                               type="text"
                               id={`field-${field}`}
                               name={field}
-                              value={(formData as any)[field]}
+                              value={formData[field as keyof BusinessFormData]}
                               onChange={(e) => handleInputChange(field, e.target.value)}
                               className={`w-full px-3 py-2 backdrop-blur-sm border rounded-md focus:outline-none focus:ring-2 transition-all ${inputClasses}`}
                               placeholder={fieldPlaceholders[field as keyof typeof fieldPlaceholders]}
@@ -1957,7 +2015,7 @@ Thank you for your consideration!`;
                             <textarea
                               id={`field-${field}`}
                               name={field}
-                              value={(formData as any)[field]}
+                              value={formData[field as keyof BusinessFormData]}
                               onChange={(e) => handleInputChange(field, e.target.value)}
                               className={`w-full px-3 py-2 backdrop-blur-sm border rounded-md focus:outline-none focus:ring-2 resize-none transition-all ${inputClasses}`}
                               rows={3}

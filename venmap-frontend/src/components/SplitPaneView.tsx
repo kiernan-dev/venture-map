@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, Copy, Download, ChevronDown, Send, FileText, Loader2, Paperclip, Upload, X } from 'lucide-react';
 
 interface ChatMessage {
@@ -6,6 +6,16 @@ interface ChatMessage {
   type: 'user' | 'bot';
   message: string;
   timestamp: Date;
+  attachments?: FileAttachment[];
+}
+
+interface FileAttachment {
+  id: number;
+  name: string;
+  type: string;
+  content: string;
+  size: number;
+  uploadedAt: string;
 }
 
 interface ExportOption {
@@ -26,7 +36,7 @@ interface SplitPaneViewProps {
   showExportMenu: boolean;
   chatInput: string;
   showChatbot: boolean;
-  pendingAttachments: any[];
+  pendingAttachments: FileAttachment[];
   isDragging: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   
@@ -93,7 +103,7 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
     e.preventDefault();
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging) return;
     
     const rightPanel = document.querySelector('.split-pane-container');
@@ -106,11 +116,11 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
     // Constrain between 20% and 80%
     const newHeight = Math.max(20, Math.min(80, percentage));
     setSplitPaneHeight(newHeight);
-  };
+  }, [isDragging]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false);
-  };
+  }, []);
 
   // Add/remove global mouse event listeners
   useEffect(() => {
@@ -127,7 +137,7 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isDragging]);
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   // Auto-scroll to bottom when new messages arrive or when loading
   useEffect(() => {
@@ -292,9 +302,9 @@ export const SplitPaneView: React.FC<SplitPaneViewProps> = ({
                           {message.type === 'user' ? (
                             <div>
                               {/* Show attachments for user messages */}
-                              {(message as any).attachments && (message as any).attachments.length > 0 && (
+                              {message.attachments && message.attachments.length > 0 && (
                                 <div className="mb-2 flex flex-wrap gap-1">
-                                  {(message as any).attachments.map((attachment: any) => (
+                                  {message.attachments.map((attachment: FileAttachment) => (
                                     <div
                                       key={attachment.id}
                                       className="flex items-center gap-1 px-2 py-1 bg-white/20 rounded text-xs text-white/90"

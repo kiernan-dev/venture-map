@@ -6,7 +6,7 @@ export interface BusinessPlan {
   id?: number;
   name: string;
   template: string;
-  data: Record<string, any>; // Form data
+  data: Record<string, string>; // Form data
   generatedPlan: string;
   createdAt: string;
   updatedAt: string;
@@ -42,7 +42,7 @@ export interface UploadedDocument {
 export interface AppSettings {
   id?: number;
   key: string;
-  value: any;
+  value: unknown;
   updatedAt: string;
 }
 
@@ -169,7 +169,7 @@ export class StorageService {
   }
 
   static async getChatSessions(businessPlanId?: number): Promise<ChatSession[]> {
-    let query = db.chatSessions.orderBy('updatedAt').reverse();
+    const query = db.chatSessions.orderBy('updatedAt').reverse();
     
     if (businessPlanId) {
       return await query.filter(session => session.businessPlanId === businessPlanId).toArray();
@@ -237,7 +237,7 @@ export class StorageService {
   }
 
   // App settings
-  static async setSetting(key: string, value: any): Promise<void> {
+  static async setSetting(key: string, value: unknown): Promise<void> {
     const existing = await db.appSettings.where('key').equals(key).first();
     const timestamp = new Date().toISOString();
     
@@ -250,7 +250,7 @@ export class StorageService {
 
   static async getSetting<T>(key: string, defaultValue?: T): Promise<T> {
     const setting = await db.appSettings.where('key').equals(key).first();
-    return setting ? setting.value : defaultValue!;
+    return setting ? (setting.value as T) : defaultValue!;
   }
 
   // Migration from localStorage
