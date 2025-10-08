@@ -19,7 +19,22 @@ app.set('trust proxy', true);
 const basePath = process.env.BASE_PATH || '';
 
 // Security middleware (before rate limiter)
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://api.anthropic.com", "https://api.openai.com", "https://generativelanguage.googleapis.com"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Allow embedding for development
+}));
 
 // Rate limiting (AFTER trust proxy is set)
 const limiter = rateLimit({
@@ -67,7 +82,7 @@ app.use('*', (req, res) => {
 });
 
 // Global error handler
-app.use((err, req, res, next) => {
+app.use((err, _req, res, _next) => {
   console.error('Global error:', err);
   res.status(500).json({
     error: 'Internal server error',

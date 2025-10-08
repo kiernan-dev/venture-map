@@ -4,14 +4,6 @@ import { AIClient } from '../utils/apiClient';
 import { SplitPaneView } from './SplitPaneView';
 import { StorageService, type BusinessPlan } from '../utils/database';
 
-// Extend Window interface for speech recognition
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
-}
-
 // Template interface
 interface Template {
   name: string;
@@ -287,9 +279,6 @@ const BusinessPlanCreator = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
-  // Speech recognition state removed - feature not currently implemented
-  // const [isListening, setIsListening] = useState(false);
-  // const [recognition, setRecognition] = useState<any>(null);
   const [aiStatus, setAiStatus] = useState({ isConfigured: false, provider: 'Checking...', loading: true, developerMode: true });
   const [userApiKeys, setUserApiKeys] = useState({ claude: '', openai: '', provider: '' });
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -373,7 +362,6 @@ const BusinessPlanCreator = () => {
     }
   }), []);
 
-  // Speech recognition initialization removed - feature not implemented
 
   // Auto-scroll chat messages
   useEffect(() => {
@@ -394,20 +382,6 @@ const BusinessPlanCreator = () => {
     }
   }, [showChatbot, chatMessages.length]);
 
-  // Voice input functionality - currently unused
-  // const toggleVoiceInput = () => {
-  //   if (!recognition) {
-  //     showToast('Speech recognition not supported in this browser', 'error');
-  //     return;
-  //   }
-  //   if (isListening) {
-  //     recognition.stop();
-  //     setIsListening(false);
-  //   } else {
-  //     recognition.start();
-  //     setIsListening(true);
-  //   }
-  // };
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || isChatLoading) return;
