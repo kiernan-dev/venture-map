@@ -1048,7 +1048,7 @@ Please provide helpful, specific advice. Keep your response concise but actionab
 
 ${formContent}${complianceInfo}${technicalInfo}${securityInfo}${integrationInfo}
 
-Format the business plan using proper markdown with the following structure:
+Format the business plan using proper markdown with the following structure. IMPORTANT: For any tabular data (like financial projections, timelines, or comparisons), use HTML table format instead of Markdown tables:
 
 # Business Plan: ${formData.businessName || '[Business Name]'}
 
@@ -1097,7 +1097,19 @@ Key milestones, phases, and timeline for business launch and growth.
 ## Appendices
 Supporting documents, charts, and additional relevant information.
 
-Make it professional, detailed, and actionable. Include specific recommendations and next steps where appropriate.`;
+Make it professional, detailed, and actionable. Include specific recommendations and next steps where appropriate.
+
+CRITICAL FORMATTING RULE: Any data that should be presented in table format (financial projections, timelines, feature comparisons, etc.) must use proper HTML table syntax with <table>, <thead>, <tbody>, <tr>, <th>, and <td> tags. Add class="business-table" to all table elements. Do NOT use Markdown table syntax with pipes (|) and dashes (-) as these will not render correctly.
+
+Example table format:
+<table class="business-table">
+<thead>
+<tr><th>Item</th><th>Year 1</th><th>Year 2</th></tr>
+</thead>
+<tbody>
+<tr><td>Revenue</td><td>$100K</td><td>$200K</td></tr>
+</tbody>
+</table>`;
 
     try {
       const aiClient = AIClient.getInstance();
@@ -1518,8 +1530,51 @@ Thank you for your consideration!`;
   const renderMarkdown = (text: string) => {
     if (!text) return '';
     
+    // Convert Markdown tables to HTML tables
+    const convertTables = (text: string) => {
+      const tableRegex = /(\|[^\n]+\|\n\|[-|\s]+\|\n(?:\|[^\n]+\|\n?)*)/g;
+      
+      return text.replace(tableRegex, (match) => {
+        const lines = match.trim().split('\n');
+        if (lines.length < 3) return match;
+        
+        const headerRow = lines[0];
+        const dataRows = lines.slice(2);
+        
+        // Parse header
+        const headers = headerRow.split('|').slice(1, -1).map(h => h.trim());
+        
+        // Parse data rows
+        const rows = dataRows.map(row => 
+          row.split('|').slice(1, -1).map(cell => cell.trim())
+        );
+        
+        // Build HTML table
+        let html = '<table class="business-table w-full border-collapse border border-gray-300 mb-4">\n';
+        html += '<thead class="bg-gray-50">\n<tr>\n';
+        headers.forEach(header => {
+          html += `<th class="border border-gray-300 px-4 py-2 text-left font-semibold">${header}</th>\n`;
+        });
+        html += '</tr>\n</thead>\n<tbody>\n';
+        
+        rows.forEach(row => {
+          html += '<tr>\n';
+          row.forEach(cell => {
+            html += `<td class="border border-gray-300 px-4 py-2">${cell}</td>\n`;
+          });
+          html += '</tr>\n';
+        });
+        
+        html += '</tbody>\n</table>';
+        return html;
+      });
+    };
+    
+    // Apply table conversion first
+    const processedText = convertTables(text);
+    
     // Simple markdown to HTML conversion - let prose handle the styling
-    const html = text
+    const html = processedText
       .replace(/^---$/gm, '<hr>')
       .replace(/^# (.*$)/gm, '<h1>$1</h1>')
       .replace(/^## (.*$)/gm, '<h2>$1</h2>')
@@ -1568,6 +1623,39 @@ Thank you for your consideration!`;
           to {
             opacity: 1;
           }
+        }
+        
+        /* Business table styles */
+        .business-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 1rem 0;
+          border: 1px solid #d1d5db;
+          border-radius: 0.375rem;
+          overflow: hidden;
+        }
+        
+        .business-table th {
+          background-color: ${isDarkMode ? '#374151' : '#f9fafb'};
+          color: ${isDarkMode ? '#f3f4f6' : '#111827'};
+          border: 1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'};
+          padding: 0.75rem 1rem;
+          text-align: left;
+          font-weight: 600;
+        }
+        
+        .business-table td {
+          border: 1px solid ${isDarkMode ? '#4b5563' : '#d1d5db'};
+          padding: 0.75rem 1rem;
+          color: ${isDarkMode ? '#e5e7eb' : '#374151'};
+        }
+        
+        .business-table tr:nth-child(even) {
+          background-color: ${isDarkMode ? '#1f2937' : '#f9fafb'};
+        }
+        
+        .business-table tr:hover {
+          background-color: ${isDarkMode ? '#374151' : '#f3f4f6'};
         }
       `}</style>
       
