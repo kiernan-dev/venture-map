@@ -279,21 +279,3 @@ console.log(window.aiClient.getConfigInfo());
 | `FRONTEND_URL` | Frontend URL for CORS | <http://localhost:3000> | No |
 
 *At least one API key is required when USE_BACKEND_API_KEYS=true
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [Claude Code](https://claude.ai/code) assistance
-- UI components inspired by modern design systems
-- AI integration powered by Anthropic Claude, OpenAI, and Google Gemini
