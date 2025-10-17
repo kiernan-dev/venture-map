@@ -125,6 +125,7 @@ GEMINI.md
 .ai-prompts/
 .ai-context/
 **/CLAUDE.md
+SECURITY_IMPROVEMENTS.md
 
 # Linting config (keep examples, ignore overrides)
 eslint.config.js
