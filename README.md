@@ -10,8 +10,8 @@ on your specific business model and market.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/VentureMap.git
-cd VentureMap
+git clone https://github.com/kiernan-dev/venture-map.git
+cd venture-map
 ```
 
 ### 2. Install Dependencies
